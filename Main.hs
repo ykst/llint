@@ -12,4 +12,4 @@ comp e a b  = compare (e a) (e b)
 main =
     getArgs >>=
     inspectFiles >>=
-    putStrLn . unlines . map show . sortBy (comp reportPos) . reports
+    mapM_ (putStrLn . show) . sortBy (comp reportPos) . reports

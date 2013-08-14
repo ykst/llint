@@ -17,10 +17,7 @@ OBJS=$(SRCS:%.hs=%.o) $(SRCS:%.hs=%.hi)
 all: $(TARGET)
 
 $(TARGET): $(SRCS)
-	ghc --make -O2 -o $@ $^
-
-test: $(TARGET)
-	time cat loadlist | xargs ./$(TARGET) template.lua k/spec/lib/engine.lua
+	ghc --make -O2 -rtsopts -with-rtsopts="-K64m" -o $@ $^
 
 clean:
 	$(RM) $(OBJS) $(TARGET)
