@@ -13,6 +13,7 @@ import Language.Lua.AST
 import Language.Lua.Type
 import Language.Lua.Symbol
 import Language.Lua.Semantics
+import Language.Lua.Parser (fromFile)
 import Language.Lua.Lint.Env
 import Language.Lua.Lint.Rules
 import Language.Lua.Lint.Report
@@ -424,13 +425,8 @@ eval r exp = checkExp r exp >> case exp of
         return (head (propagate (intrSemantics intr) [spec]))
     Nop -> return nilEvalSpec -- not reach
 
-inspectPrograms :: [LuaProgram] -> Env
-inspectPrograms progs =
-    runST $
-        newSTRef initialEnv { currentScope = scopeNodeGlobal } >>= \r ->
-        inspectMany r progs >>
-        scanUnused r >>
-        readSTRef r
+mergeResults :: Env -> Env
+mergeResults env = runST $ newSTRef env >>= \r -> scanUnused r >> readSTRef r
     where
     scanUnused r =
         readSTRef r >>= \env ->
@@ -444,3 +440,15 @@ inspectPrograms progs =
                      (report r pos (Deprecated (UnUsedVariable usage def)))
             | otherwise = return ()
 
+inspectPrograms :: [FilePath] -> Env -> IO Env
+inspectPrograms [] env = return (mergeResults env)
+inspectPrograms (f:fs) env =
+    fromFile f >>= \result ->
+        case result of
+            Right prog -> inspectPrograms fs (runST $ newSTRef env >>= \r ->
+                inspect r prog >> readSTRef r)
+            Left s -> error s
+
+inspectFiles :: [FilePath] -> IO Env
+inspectFiles progs =
+  inspectPrograms progs (initialEnv { currentScope = scopeNodeGlobal })
