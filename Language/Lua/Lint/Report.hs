@@ -102,6 +102,8 @@ instance Show DeprecatedDetail where
             unwords [showUsage usage,  show def, "is not used"]
         ModifyingLoopIndex def pos ->
             unwords ["modifies loop index", show def, "defined at", show pos]
+        UseOfEmptyStatement ->
+            unwords ["empty statement"]
 
 data DangerDetail = 
     UseOfUndefinedVariable Name 
