@@ -24,3 +24,6 @@ test: $(TARGET)
 
 clean:
 	$(RM) $(OBJS) $(TARGET)
+
+install: $(TARGET)
+	cp $(TARGET) /usr/local/bin
