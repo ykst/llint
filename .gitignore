@@ -1,0 +1,8 @@
+*.hi
+*.o
+*.s
+*~
+
+# binary
+llint
+llint.prof
