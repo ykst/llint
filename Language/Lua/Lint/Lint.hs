@@ -35,8 +35,8 @@ searchThere r name@(pos,def) node =
 
 searchRec :: STRef s Env -> Name -> G.Node -> ST s (Maybe (Int, ScopeNodeItem))
 searchRec r name@(pos,def) node =
-    searchThere r name node >>= 
-    maybe 
+    searchThere r name node >>=
+    maybe
         (getNodeParent r node >>= maybe (return Nothing) (searchRec r name))
         (return . Just)
 -- fetch
@@ -46,7 +46,7 @@ fetch r name@(pos,_) =
     searchRecHere r name >>= \result ->
     case result of
         Nothing ->
-            report r pos (Danger (UseOfUndefinedVariable name)) >>
+            report r pos (UseOfUndefinedVariable name) >>
             return (LuaTypeNil, Just TypedNil)
         Just (definedNode, (depNode, _, _, (spec@(tp,val):_))) ->
             linkDepNode r depNode name spec >>
@@ -61,7 +61,7 @@ fetchTableItem r name@(pos,_) node  =
     searchThere r name node >>= \result ->
     case result of
         Nothing ->
-            report r pos (Danger (UseOfUndefinedTableIndex name)) >>
+            report r pos (UseOfUndefinedTableIndex name) >>
             return (LuaTypeNil, Just TypedNil)
         Just (_, (depNode, _, _, (spec:_))) ->
             linkDepNode r depNode name spec >>
@@ -71,7 +71,7 @@ fetchModule :: STRef s Env -> Name -> ST s ()
 fetchModule r name@(pos,_) =
     searchThere r name scopeNodeEnv >>= \result ->
     case result of
-        Nothing -> report r pos (Danger (UseOfUnknownModule name))
+        Nothing -> report r pos (UseOfUnknownModule name)
         Just (_, (depNode, _, _, (spec:_))) -> linkDepNode r depNode name spec
 
 defineLocal  :: STRef s Env -> Name -> EvalSpec -> ST s ()
@@ -84,9 +84,9 @@ defineLocal r name@(pos,def) spec =
         Nothing -> return ()
         Just (node,(_, defPos, _, _)) ->
             if node == scopeNodeGlobal then
-                report r pos (Wrong (MaskingGlobalDefinitionByLocal def defPos))
+                report r pos (MaskingGlobalDefinitionByLocal def defPos)
             else if node == currentNode then
-                report r pos (Wrong (MaskingPreviousLocalDefinition def defPos))
+                report r pos (MaskingPreviousLocalDefinition def defPos)
             else
                 return ()
 
@@ -98,7 +98,7 @@ defineTableItemThere r name@(pos,def) spec node =
     (case var of
         Nothing -> return ()
         Just (node,(_, defPos, _, _)) ->
-            report r pos (Wrong (MaskingPreviousTableItem def defPos))) >>
+            report r pos (MaskingPreviousTableItem def defPos)) >>
     return depNode
 
 defineTableItemHere :: STRef s Env -> Name -> EvalSpec -> ST s DepGraphNode
@@ -116,7 +116,7 @@ defineModule r name@(pos,def) spec =
     modifyNodeLabel r (M.insert def (depNode, pos, DefineModule, [spec])) scopeNodeEnv >>
     case mod of
         Nothing -> return ()
-        Just (node,(_, defPos, _, _)) -> report r pos (Danger (DuplicateModuleDefinition (defPos, def)))
+        Just (node,(_, defPos, _, _)) -> report r pos (DuplicateModuleDefinition (defPos, def))
 
 defineLoopIndex :: STRef s Env -> Name -> EvalSpec -> ST s ()
 defineLoopIndex r name@(pos,def) spec = addDepNode r name DefineIndex spec >>= \depNode ->
@@ -158,19 +158,19 @@ hookStmt r stmt = case stmt of
 
 checkStmt :: STRef s Env -> Statement -> ST s ()
 checkStmt r stmt = case stmt of
-    (Do pos (Block [] Nothing)) -> 
-        report r pos (Deprecated EmptyBlock)
+    (Do pos (Block [] Nothing)) ->
+        report r pos (EmptyBlock)
     (For _ _ _ _ (Just (Literal pos (TypedInt 1))) _) ->
-        report r pos (Deprecated RedundantStepIndex)
+        report r pos (RedundantStepIndex)
     (If _ (Literal pos val)
         _
-        _) -> report r pos (Deprecated (ConstantConditionalExpression val))
+        _) -> report r pos ((ConstantConditionalExpression val))
     (If pos _
         (Block [] Nothing)
-        _) -> report r pos (Deprecated EmptyConditionalBlock)
+        _) -> report r pos (EmptyConditionalBlock)
     (If pos exp1
         (Block [If _ exp2 _ Nothing] Nothing)
-        _) -> report r pos (Deprecated (RedundantConditionalBlock exp1 exp2))
+        _) -> report r pos (RedundantConditionalBlock exp1 exp2)
     _ -> return ()
 -- rules for expressions
 checkExp r exp = case exp of
@@ -183,20 +183,20 @@ checkExp r exp = case exp of
         (Call _
             (Fetch (pos, "rawequal"))
             [Literal _ (TypedString _ x), exp])) ->
-        report r pos (Deprecated RawEqualForString)
+        report r pos (RawEqualForString)
     (ExpCall
         (Call _
             (Fetch (pos, "rawequal"))
             [_, Literal _ (TypedString _ x)])) ->
-        report r pos (Deprecated RawEqualForString)
+        report r pos (RawEqualForString)
     (Literal pos (TypedTable es@(e1:e2:_))) ->
         let (x:xs) = map getTableItemSyntax es in
             if all (x ==) xs then
                 return ()
             else
-                report r pos (Deprecated MultipleStyleInTable)
+                report r pos (MultipleStyleInTable)
     (Dot pos (Fetch (_, "GLOBAL")) exp) ->
-        report r pos (Deprecated DirectModuleSpaceAccess)
+        report r pos (DirectModuleSpaceAccess)
     _ -> return ()
 -- helper
 inspectNewScope :: Inspect a => STRef s Env -> a -> ST s ()
@@ -204,7 +204,7 @@ inspectNewScope r a = inNewScope r (inspect r a)
 
 assignSpec :: STRef s Env -> ScopeGraphNode -> String -> EvalSpec -> ST s ()
 assignSpec r node def spec =
-     modifyNodeLabel r (M.update (\(a,b,c,d@(dh:_)) -> if dh == spec then Just (a,b,c,d) else Just (a,b,c,spec:d)) def) node   
+     modifyNodeLabel r (M.update (\(a,b,c,d@(dh:_)) -> if dh == spec then Just (a,b,c,d) else Just (a,b,c,spec:d)) def) node
 
 assign :: STRef s Env -> Exp -> EvalSpec -> ST s ()
 assign r lhs@(Fetch name@(pos,def)) spec =
@@ -212,23 +212,23 @@ assign r lhs@(Fetch name@(pos,def)) spec =
     case result of
         Nothing ->
             defineGlobal r name spec >>
-            report r pos (Wrong (ImplicitGlobalDefinition def))
-        Just (node, (_, defPos, defType, _)) -> 
+            report r pos (ImplicitGlobalDefinition def)
+        Just (node, (_, defPos, defType, _)) ->
             assignSpec r node def spec >>
             when (defType == DefineIndex)
-                 (report r pos (Deprecated (ModifyingLoopIndex def defPos)))
+                 (report r pos (ModifyingLoopIndex def defPos))
 assign r lhs@(Index idxPos obj idx) spec =
     eval r obj >>= \(objType, objVal) ->
     eval r idx >>= \(idxType, idxVal) ->
         case objType of
             LuaTypeNil ->
-                report r idxPos (Danger NilTableIndex)
+                report r idxPos (NilTableIndex)
             tp ->
                 if isIndexibleType tp then
                     case (tp, idxType, idxVal) of
                         (LuaTypeTable node, LuaTypeString, Just (TypedString _ key)) ->
-                            searchThere r (idxPos, key) node >>= 
-                            maybe (defineTableItemThere r (idxPos, key) spec node >> return ()) 
+                            searchThere r (idxPos, key) node >>=
+                            maybe (defineTableItemThere r (idxPos, key) spec node >> return ())
                                   (const (assignSpec r node key spec))
                         (LuaTypeUnknown, LuaTypeString, Just (TypedString _ key)) ->
                             createUnknownTable r [] >>= \(LuaTypeUnknownTable node, _) ->
@@ -239,8 +239,8 @@ assign r lhs@(Index idxPos obj idx) spec =
                             linkDepNode r depNode (idxPos,key) spec -- exclude unknown table item from unused list
                         (a,b,c) -> return () -- could not tract
                 else
-                    report r idxPos (Danger (IndexingIllegalType tp))
-assign r lhs@(Dot dotPos obj name@(pos,def)) spec = 
+                    report r idxPos (IndexingIllegalType tp)
+assign r lhs@(Dot dotPos obj name@(pos,def)) spec =
      assign r (Index dotPos obj (Literal pos (TypedString SingleQuoted def))) spec
 
 instance Inspect LuaProgram where
@@ -257,7 +257,7 @@ instance Inspect Function where
         let actual = sourceLine endPos - sourceLine pos
             limit = lintConfFunctionThreshold conf in
             if  actual >= limit then
-                report r pos (Deprecated (TooLongFunction actual limit))
+                report r pos (TooLongFunction actual limit)
             else
                 return ()
 
@@ -270,14 +270,14 @@ expectType :: STRef s Env -> SourcePos -> LuaType -> EvalSpec -> ST s (Maybe Eva
 expectType r pos expect spec@(actual, _)
     | expect == actual = return (Just spec)
     | actual == LuaTypeUnknown = return (Just spec)
-    | otherwise = 
-        report r pos (Danger (TypeMismatch expect actual)) >>
+    | otherwise =
+        report r pos (TypeMismatch expect actual) >>
         return Nothing
 
 --useFunction
 expectFunction r pos spec@(tp,_) =
     unless ((tp == LuaTypeFunction) || (tp == LuaTypeUnknown))
-           (report r pos (Danger (CallingNonFunctionalType tp)))
+           (report r pos (CallingNonFunctionalType tp))
 
 evalMany r = mapM (eval r)
 
@@ -292,8 +292,8 @@ instance Inspect Statement where
         Do pos block ->
             inspectNewScope r block
         If pos cond list opt ->
-            eval r cond >>= \(_, mlit) -> 
-            maybe (return ()) (report r pos . Deprecated . ConstantConditionalExpression) mlit >>
+            eval r cond >>= \(_, mlit) ->
+            maybe (return ()) (report r pos . ConstantConditionalExpression) mlit >>
             inspectNewScope r list >>
             maybe (return ()) (inspect r) opt
         For pos def idx1 idx2 idx3 block ->
@@ -302,9 +302,9 @@ instance Inspect Statement where
                 expectType r pos LuaTypeNumber spec1 >>
                 eval r idx2 >>= \spec2 ->
                 expectType r pos LuaTypeNumber spec2 >>
-                maybe (return nilEvalSpec) 
-                      (\exp -> eval r exp >>= \spec -> 
-                       expectType r pos LuaTypeNumber spec >> 
+                maybe (return nilEvalSpec)
+                      (\exp -> eval r exp >>= \spec ->
+                       expectType r pos LuaTypeNumber spec >>
                        return spec) idx3 >>
                 defineLoopIndex r def spec1 >>
                 inspect r block
@@ -344,7 +344,7 @@ instance Inspect Statement where
                 defineLocal r (pos, "self") unknownEvalSpec >>
                 inspect r func)
         EmptyStatement pos ->
-            report r pos (Deprecated UseOfEmptyStatement)
+            report r pos (UseOfEmptyStatement)
             )
 
 instance Inspect TableItem where
@@ -374,17 +374,17 @@ createUnknownTable :: STRef s Env -> [TableItem] -> ST s EvalSpec
 createUnknownTable r items = createTableBase r (LuaTypeUnknownTable) items
 
 tryTableIndex :: STRef s Env -> SourcePos -> EvalSpec -> EvalSpec -> ST s EvalSpec
-tryTableIndex r pos (tp,_) (idxType, idxVal) 
+tryTableIndex r pos (tp,_) (idxType, idxVal)
     | tp == LuaTypeNil =
-        report r pos (Danger NilTableIndex) >>
+        report r pos (NilTableIndex) >>
         return nilEvalSpec
     | isIndexibleType tp =
         case (tp, idxType, idxVal) of
             (LuaTypeTable node, LuaTypeString, Just (TypedString _ key)) ->
                 fetchTableItem r (pos, key) node
             _ -> return (tp, Nothing)
-    | otherwise = 
-        report r pos (Danger (IndexingIllegalType tp)) >>
+    | otherwise =
+        report r pos (IndexingIllegalType tp) >>
         return (tp, Nothing)
 
 eval ::  STRef s Env -> Exp -> ST s EvalSpec
@@ -398,7 +398,7 @@ eval r exp = checkExp r exp >> case exp of
             TypedVararg -> fetch r (pos, "...")
             _ -> return (getType exp, Just lit)
     Index pos obj index ->
-        eval r obj >>= \lspec -> 
+        eval r obj >>= \lspec ->
         eval r index >>= \rspec ->
         tryTableIndex r pos lspec rspec
     Parens exp -> eval r exp
@@ -406,7 +406,7 @@ eval r exp = checkExp r exp >> case exp of
     Dot pos obj name@(dotPos, def) ->
         eval r (Index pos obj (Literal dotPos (TypedString SingleQuoted def)))
     ExpCall (Call pos func args) ->
-        eval r func >>= 
+        eval r func >>=
         expectFunction r pos >>
         evalMany r args >>
         return unknownEvalSpec
@@ -416,11 +416,11 @@ eval r exp = checkExp r exp >> case exp of
         expectFunction r pos >>
         evalMany r args >>
         return unknownEvalSpec
-    Binop pos intr lhs rhs -> 
-        eval r lhs >>= \lspec -> 
+    Binop pos intr lhs rhs ->
+        eval r lhs >>= \lspec ->
         eval r rhs >>= \rspec ->
         return (head (propagate (intrSemantics intr) [lspec, rspec]))
-    Unop pos intr exp -> 
+    Unop pos intr exp ->
         eval r exp >>= \spec ->
         return (head (propagate (intrSemantics intr) [spec]))
     Nop -> return nilEvalSpec -- not reach
@@ -437,7 +437,7 @@ mergeResults env = runST $ newSTRef env >>= \r -> scanUnused r >> readSTRef r
         reportUnused r gr (node, (name@(pos,def), (usage, tp)))
             | G.suc gr node == [] =
                 when (notElem def ["_", "setup", "execute", "leave"])
-                     (report r pos (Deprecated (UnUsedVariable usage def)))
+                     (report r pos (UnUsedVariable usage def))
             | otherwise = return ()
 
 inspectPrograms :: [FilePath] -> Env -> IO Env
